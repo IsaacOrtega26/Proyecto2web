@@ -17,4 +17,3 @@ def scrape_dynamic():
         })
 
     driver.quit()
-    return results
