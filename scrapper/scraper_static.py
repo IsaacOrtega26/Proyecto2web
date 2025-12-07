@@ -1,20 +1,38 @@
 import requests
 from bs4 import BeautifulSoup
+import re
+from db_utils import save_products
 
-def scrape_static():
-    url = "https://books.toscrape.com/"
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, "html.parser")
+URL = "https://books.toscrape.com/"
 
-    books = []
+def scrape_books():
+    resp = requests.get(URL)
+    resp.raise_for_status()
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    products = []
 
     for item in soup.select(".product_pod"):
         title = item.h3.a["title"]
-        price = item.select_one(".price_color").text
+        price_text = item.select_one(".price_color").text.strip()
 
-        books.append({
+        price_clean = re.sub(r"[^0-9.]", "", price_text)
+        price = float(price_clean)
+
+        products.append({
             "title": title,
-            "price": price
+            "price": price,
+            "url": URL
         })
 
-    return books
+    return products
+
+
+def main():
+    products = scrape_books()
+    save_products(products)
+    print(f"Guardados {len(products)} productos en la BD")
+
+
+if __name__ == "__main__":
+    main()
