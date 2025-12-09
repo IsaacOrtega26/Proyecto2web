@@ -16,7 +16,11 @@ def get_connection():
 def get_results():
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, title, price, url, created_at FROM products;")
+    cursor.execute("""
+        SELECT id, title, price, url, created_at 
+        FROM products
+        WHERE url LIKE '%tiendamonge.com%';
+    """)
     rows = cursor.fetchall()
     conn.close()
 
@@ -25,7 +29,7 @@ def get_results():
         products.append({
             "id": r[0],
             "title": r[1],
-            "price": float(r[2]) if r[2] else None,
+            "price": float(r[2]) if r[2] is not None else None,
             "url": r[3],
             "created_at": str(r[4])
         })

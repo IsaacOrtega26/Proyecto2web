@@ -3,75 +3,301 @@
 <head>
     <meta charset="UTF-8">
     <title>Dashboard Productos Scraping</title>
-    <style>
+    <style> 
         body {
             font-family: Arial, sans-serif;
             padding: 20px;
-            background: #111;
-            color: #eee;
+            background: #0f172a;
+            color: #e5e7eb;
         }
         h1 {
+            margin-bottom: 5px;
+        }
+        .subtitle {
+            color: #9ca3af;
+            margin-bottom: 20px;
+        }
+        .filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .filter-group label {
+            font-size: 12px;
+            color: #9ca3af;
+        }
+        .filter-group input,
+        .filter-group select {
+            padding: 6px 8px;
+            border-radius: 6px;
+            border: 1px solid #374151;
+            background: #111827;
+            color: #e5e7eb;
+            outline: none;
+        }
+        .filter-group input:focus,
+        .filter-group select:focus {
+            border-color: #3b82f6;
+        }
+        .stats {
             margin-bottom: 10px;
+            font-size: 14px;
+            color: #9ca3af;
         }
         table {
             border-collapse: collapse;
             width: 100%;
-            margin-top: 15px;
-            background: #1e1e1e;
+            margin-top: 10px;
+            background: #020617;
         }
         th, td {
-            border: 1px solid #444;
+            border: 1px solid #1f2937;
             padding: 8px;
             text-align: left;
+            font-size: 14px;
         }
         th {
-            background: #222;
+            background: #111827;
+            cursor: pointer;
+            user-select: none;
+        }
+        th span.sort {
+            font-size: 11px;
+            color: #6b7280;
+            margin-left: 4px;
         }
         tr:nth-child(even) {
-            background: #181818;
+            background: #020617;
+        }
+        tr:nth-child(odd) {
+            background: #030712;
+        }
+        a {
+            color: #60a5fa;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 999px;
+            font-size: 11px;
+            background: #111827;
+            border: 1px solid #1f2937;
+        }
+        .badge-books {
+            color: #a855f7;
+            border-color: #a855f7;
+        }
+        .badge-monge {
+            color: #22c55e;
+            border-color: #22c55e;
         }
     </style>
 </head>
 <body>
-    <h1>Productos scrapados</h1>
-    <p>Fuente: API <code>/results</code></p>
+    <h1>Dashboard de Productos</h1>
+    <p class="subtitle">Datos obtenidos por scraping de BooksToScrape y Tienda Monge.</p>
+
+    <div class="filters">
+        <div class="filter-group">
+            <label for="searchTitle">Buscar por título</label>
+            <input type="text" id="searchTitle" placeholder="Ej: laptop, televisor, hogar, etc.">
+        </div>
+        <div class="filter-group">
+            <label for="minPrice">Precio mínimo</label>
+            <input type="number" step="0.01" id="minPrice" placeholder="0">
+        </div>
+        <div class="filter-group">
+            <label for="maxPrice">Precio máximo</label>
+            <input type="number" step="0.01" id="maxPrice" placeholder="100000">
+        </div>
+        <div class="filter-group">
+            <label for="sourceFilter">Origen</label>
+            <select id="sourceFilter">
+                <option value="all">Todos</option>
+                <option value="Monge">Tienda Monge</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="stats">
+        Total en BD: <strong id="totalCount">0</strong> &nbsp;|&nbsp;
+        Mostrando: <strong id="filteredCount">0</strong>
+    </div>
 
     <table id="tabla">
         <thead>
         <tr>
-            <th>ID</th>
-            <th>Título</th>
-            <th>Precio</th>
-            <th>URL</th>
-            <th>Fecha</th>
+            <th data-column="id">ID <span class="sort"></span></th>
+            <th data-column="title">Título <span class="sort"></span></th>
+            <th data-column="price">Precio <span class="sort"></span></th>
+            <th data-column="source">Origen <span class="sort"></span></th>
+            <th data-column="created_at">Fecha <span class="sort"></span></th>
+            <th>Link</th>
         </tr>
         </thead>
         <tbody></tbody>
     </table>
 
     <script>
-        fetch("/results")
-            .then(res => res.json())
-            .then(data => {
-                const tbody = document.querySelector("#tabla tbody");
-                tbody.innerHTML = "";
+        let allData = [];
+        let filteredData = [];
+        let currentSort = { column: null, asc: true };
 
-                data.forEach(p => {
-                    const tr = document.createElement("tr");
-                    tr.innerHTML = `
-                        <td>${p.id}</td>
-                        <td>${p.title}</td>
-                        <td>${p.price ?? ""}</td>
-                        <td><a href="${p.url}" target="_blank" style="color:#4ea3ff;">Link</a></td>
-                        <td>${p.created_at}</td>
-                    `;
-                    tbody.appendChild(tr);
+        function detectSource(url) {
+            if (!url) return "Desconocido";
+            if (url.includes("tiendamonge.com")) return "Monge";
+            if (url.includes("books.toscrape.com")) return "Books";
+            return "Desconocido";
+        }
+
+        function fetchData() {
+            fetch("/results")
+                .then(res => res.json())
+                .then(data => {
+                    // enriquecemos los datos con el origen
+                    allData = data.map(p => ({
+                        ...p,
+                        source: detectSource(p.url)
+                    }));
+                    filteredData = [...allData];
+
+                    document.getElementById("totalCount").textContent = allData.length;
+                    renderTable();
+                    document.getElementById("filteredCount").textContent = filteredData.length;
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert("Error cargando datos de /results");
                 });
-            })
-            .catch(err => {
-                console.error(err);
-                alert("Error cargando datos de /results");
+        }
+
+        function renderTable() {
+            const tbody = document.querySelector("#tabla tbody");
+            tbody.innerHTML = "";
+
+            filteredData.forEach(p => {
+                const tr = document.createElement("tr");
+
+                const sourceBadgeClass =
+                    p.source === "Monge" ? "badge badge-monge" :
+                    p.source === "Books" ? "badge badge-books" :
+                    "badge";
+
+                tr.innerHTML = `
+                    <td>${p.id}</td>
+                    <td>${p.title}</td>
+                    <td>${p.price != null ? p.price : ""}</td>
+                    <td><span class="${sourceBadgeClass}">${p.source}</span></td>
+                    <td>${p.created_at}</td>
+                    <td><a href="${p.url}" target="_blank">Ver</a></td>
+                `;
+                tbody.appendChild(tr);
             });
+        }
+
+        function applyFilters() {
+            const searchText = document.getElementById("searchTitle").value.toLowerCase();
+            const minPriceVal = parseFloat(document.getElementById("minPrice").value);
+            const maxPriceVal = parseFloat(document.getElementById("maxPrice").value);
+            const sourceVal = document.getElementById("sourceFilter").value;
+
+            filteredData = allData.filter(p => {
+                const titleOk = p.title.toLowerCase().includes(searchText);
+
+                const price = p.price != null ? Number(p.price) : null;
+                let priceOk = true;
+                if (!isNaN(minPriceVal) && price != null) {
+                    priceOk = priceOk && price >= minPriceVal;
+                }
+                if (!isNaN(maxPriceVal) && price != null) {
+                    priceOk = priceOk && price <= maxPriceVal;
+                }
+
+                // si no tiene precio y se puso filtro de precio, lo excluimos
+                if (( !isNaN(minPriceVal) || !isNaN(maxPriceVal) ) && price == null) {
+                    priceOk = false;
+                }
+
+                let sourceOk = true;
+                if (sourceVal !== "all") {
+                    sourceOk = p.source === sourceVal;
+                }
+
+                return titleOk && priceOk && sourceOk;
+            });
+
+            if (currentSort.column) {
+                sortData(currentSort.column, currentSort.asc);
+            }
+
+            document.getElementById("filteredCount").textContent = filteredData.length;
+            renderTable();
+        }
+
+        function sortData(column, asc) {
+            filteredData.sort((a, b) => {
+                let va = a[column];
+                let vb = b[column];
+
+                if (column === "price" || column === "id") {
+                    va = va == null ? -Infinity : Number(va);
+                    vb = vb == null ? -Infinity : Number(vb);
+                } else {
+                    va = (va || "").toString().toLowerCase();
+                    vb = (vb || "").toString().toLowerCase();
+                }
+
+                if (va < vb) return asc ? -1 : 1;
+                if (va > vb) return asc ? 1 : -1;
+                return 0;
+            });
+        }
+
+        function setupSortHeaders() {
+            const ths = document.querySelectorAll("th[data-column]");
+            ths.forEach(th => {
+                th.addEventListener("click", () => {
+                    const column = th.getAttribute("data-column");
+                    if (currentSort.column === column) {
+                        currentSort.asc = !currentSort.asc;
+                    } else {
+                        currentSort.column = column;
+                        currentSort.asc = true;
+                    }
+
+                    // limpiar indicadores
+                    document.querySelectorAll("th[data-column] .sort").forEach(span => span.textContent = "");
+
+                    const span = th.querySelector(".sort");
+                    span.textContent = currentSort.asc ? "▲" : "▼";
+
+                    sortData(currentSort.column, currentSort.asc);
+                    renderTable();
+                });
+            });
+        }
+
+        function setupFilters() {
+            document.getElementById("searchTitle").addEventListener("input", applyFilters);
+            document.getElementById("minPrice").addEventListener("input", applyFilters);
+            document.getElementById("maxPrice").addEventListener("input", applyFilters);
+            document.getElementById("sourceFilter").addEventListener("change", applyFilters);
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            setupSortHeaders();
+            setupFilters();
+            fetchData();
+        });
     </script>
 </body>
 </html>
