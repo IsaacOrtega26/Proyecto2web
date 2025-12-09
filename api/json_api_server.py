@@ -1,30 +1,34 @@
-from flask import Flask, jsonify, render_template
-import psycopg2
-import os
+# api/json_api_server.py
 
-app = Flask(__name__)
-#Obtiene una conexión a la base de datos
-def get_connection():
-    return psycopg2.connect(
-        host=os.getenv("DB_HOST", "localhost"),
-        port=os.getenv("DB_PORT", "5434"),
-        user=os.getenv("DB_USER", "admin"),
-        password=os.getenv("DB_PASSWORD", "admin"),
-        database=os.getenv("DB_NAME", "scrapingdb")
-    )
-# Endpoint para obtener los resultados de scraping de Tienda Monge
+import os
+import sys
+from flask import Flask, jsonify, render_template
+
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.append(ROOT_DIR)
+
+from scrapper.db_utils import get_connection  # ahora sí lo encuentra
+
+
+app = Flask(__name__, template_folder="templates")
+
+
 @app.get("/results")
 def get_results():
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT id, title, price, url, created_at 
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, title, price, url, created_at
         FROM products
-        WHERE url LIKE '%tiendamonge.com%';
+        ORDER BY created_at DESC;
     """)
-    rows = cursor.fetchall()
+    rows = cur.fetchall()
+
+    cur.close()
     conn.close()
-#Convierte los resultados a formato JSON
+
     products = []
     for r in rows:
         products.append({
@@ -32,18 +36,19 @@ def get_results():
             "title": r[1],
             "price": float(r[2]) if r[2] is not None else None,
             "url": r[3],
-            "created_at": str(r[4])
+            "created_at": r[4].isoformat() if hasattr(r[4], "isoformat") else str(r[4]),
         })
 
     return jsonify(products)
 
+
 @app.get("/")
 def index():
+    """
+    Renderiza el dashboard (tabla con filtros).
+    """
     return render_template("index.html")
 
+
 if __name__ == "__main__":
-    app.run(
-        debug=True,
-        host="0.0.0.0",  # <- IMPORTANTÍSIMO para Docker
-        port=5000
-    )
+    app.run(debug=True, host="0.0.0.0", port=5000)
