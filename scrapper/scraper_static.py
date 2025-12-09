@@ -1,7 +1,10 @@
 import requests
 from bs4 import BeautifulSoup
 import re
-from db_utils import save_products
+
+from .db_utils import save_products
+
+
 
 URL = "https://books.toscrape.com/"
 
@@ -27,12 +30,10 @@ def scrape_books():
 
     return products
 
-
 def main():
     products = scrape_books()
     save_products(products)
     print(f"Guardados {len(products)} productos en la BD")
-
 
 if __name__ == "__main__":
     main()
