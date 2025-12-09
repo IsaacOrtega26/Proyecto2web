@@ -1,15 +1,16 @@
 from flask import Flask, jsonify, render_template
 import psycopg2
+import os
 
 app = Flask(__name__)
 
 def get_connection():
     return psycopg2.connect(
-        host="localhost",
-        port=5434,
-        user="admin",
-        password="admin",
-        database="scrapingdb"
+        host=os.getenv("DB_HOST", "localhost"),
+        port=os.getenv("DB_PORT", "5434"),
+        user=os.getenv("DB_USER", "admin"),
+        password=os.getenv("DB_PASSWORD", "admin"),
+        database=os.getenv("DB_NAME", "scrapingdb")
     )
 
 @app.get("/results")
