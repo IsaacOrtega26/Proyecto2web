@@ -3,7 +3,7 @@ import psycopg2
 import os
 
 app = Flask(__name__)
-
+#Obtiene una conexión a la base de datos
 def get_connection():
     return psycopg2.connect(
         host=os.getenv("DB_HOST", "localhost"),
@@ -12,7 +12,7 @@ def get_connection():
         password=os.getenv("DB_PASSWORD", "admin"),
         database=os.getenv("DB_NAME", "scrapingdb")
     )
-
+# Endpoint para obtener los resultados de scraping de Tienda Monge
 @app.get("/results")
 def get_results():
     conn = get_connection()
@@ -24,7 +24,7 @@ def get_results():
     """)
     rows = cursor.fetchall()
     conn.close()
-
+#Convierte los resultados a formato JSON
     products = []
     for r in rows:
         products.append({

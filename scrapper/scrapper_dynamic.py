@@ -1,5 +1,3 @@
-# scrapper/scrapper_dynamic.py
-
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -8,24 +6,25 @@ from webdriver_manager.chrome import ChromeDriverManager
 import time
 import re
 
-from .db_utils import save_products  # db_utils.py debe estar dentro de scrapper/
-
+from .db_utils import save_products
+# URL del sitio dinámico de Tienda Monge
 URL = "https://www.tiendamonge.com/computadoras"
 
-
+# Función para realizar el scraping dinámico
 def scrape_monge():
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
 
+# Iniciar el navegador Chrome en modo headless
     driver = webdriver.Chrome(
         service=Service(ChromeDriverManager().install()),
         options=options
     )
 
     driver.get(URL)
-    time.sleep(5)  # esperar a que cargue bien la página
+    time.sleep(5)  # espera a que cargue bien la página
 
     print("Título de la página:", driver.title)
 
@@ -46,8 +45,7 @@ def scrape_monge():
             except Exception:
                 container = btn.find_element(By.XPATH, "./ancestor::div[1]")
 
-            # ====== LINK + TÍTULO DEL PRODUCTO ======
-            # buscamos el primer <a> que NO sea el botón COMPRAR
+            # Buscar el enlace del producto para obtener el título
             try:
                 link_el = container.find_element(
                     By.XPATH,
@@ -67,12 +65,11 @@ def scrape_monge():
                 full_text = container.text.strip()
                 title = full_text.split("\n")[0] if full_text else "Producto Monge"
 
-            # --- LIMPIAR TÍTULO: quitar precios y la palabra COMPRAR ---
             # cortar desde el primer símbolo de colones (para evitar meter el precio en el título)
             title_clean = re.split(r"₡|¢", title)[0]
             title_clean = title_clean.replace("COMPRAR", "").strip()
 
-            # ====== PRECIO ======
+            # Precio
             price = None
             try:
                 price_el = container.find_element(
@@ -80,14 +77,15 @@ def scrape_monge():
                     ".//*[contains(text(),'₡') or contains(text(),'¢')]"
                 )
                 price_text = price_el.text.strip()
-                # Para colones usamos los dígitos SOLAMENTE (43.495 -> 43495)
+
+                # Para colones usamos solo dígitos
                 digits = "".join(ch for ch in price_text if ch.isdigit())
                 if digits:
                     price = int(digits)
             except Exception:
                 pass
 
-            # ====== URL DEL PRODUCTO ======
+            # URL del producto
             url = URL
             if link_el is not None:
                 href = link_el.get_attribute("href")
@@ -108,7 +106,7 @@ def scrape_monge():
     print("Productos encontrados en Monge:", len(products))
     return products
 
-
+# Función principal para ejecutar el scraper dinámico
 def main():
     print("[MONGE] Iniciando scraping dinámico...")
     products = scrape_monge()
