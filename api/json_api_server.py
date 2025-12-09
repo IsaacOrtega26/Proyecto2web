@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template
 import psycopg2
 
 app = Flask(__name__)
@@ -31,5 +31,9 @@ def get_results():
         })
 
     return jsonify(products)
+
+@app.get("/")
+def index():
+    return render_template("index.html")
 
 app.run(debug=True, port=5000)
