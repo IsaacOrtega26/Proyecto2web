@@ -91,8 +91,8 @@ DB_PORT=5432
 Crear entorno virtual:
 python -m venv venv
 venv\Scripts\activate
-Instalar dependencias:
-css
+
+## Instalar dependencias:
 pip install -r requirements.txt
 
 ## requirements.txt incluye:
@@ -120,8 +120,8 @@ python api/json_api_server.py
 
 ## Rutas disponibles:
 Dashboard → http://localhost:5000
-
 API JSON → http://localhost:5000/results
+Pgadmin: admin@admin password: admin
 
 # 6 Scraper Estático (BooksToScrape)
 scrapper/scraper_static.py
