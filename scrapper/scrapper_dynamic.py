@@ -1,118 +1,254 @@
+# scrapper/scrapper_dynamic.py
+"""
+Scraper dinámico para TiendaMonge (Costa Rica).
+Detecta varios tipos de productos tecnológicos y guarda título, precio, url e imagen.
+Adaptable: si algún selector no funciona, reemplaza las listas de selectores.
+"""
+
+from time import sleep
+from urllib.parse import urljoin
+import re
+import logging
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
-import time
-import re
 
-from .db_utils import save_products
-# URL del sitio dinámico de Tienda Monge
-URL = "https://www.tiendamonge.com/computadoras"
+# imports al proyecto
+from scrapper.db_utils import save_products, find_product_by_title, log_change
+# opcional: si quieres descargar imágenes usa downloader
+# from scrapper.downloader import download_file
+# from scrapper.file_hash_utils import get_file_hash
 
-# Función para realizar el scraping dinámico
-def scrape_monge():
-    options = Options()
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("scrapper_dynamic")
 
-# Iniciar el navegador Chrome en modo headless
-    driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()),
-        options=options
-    )
+BASE = "https://www.tiendamonge.com"
 
-    driver.get(URL)
-    time.sleep(5)  # espera a que cargue bien la página
+# Lista de categorías/paths que queremos scrapear (ajusta si lo deseas)
+CATEGORIES = [
+    "/computadoras",
+    "/celulares",
+    "/televisores",
+    "/audio",
+    "/consolas-y-videojuegos",
+    "/electrodomesticos"  # agrega más si quieres
+]
 
-    print("Título de la página:", driver.title)
+# Selectores probables (se prueban en orden hasta que alguno funcione)
+CARD_SELECTORS = [
+    ".product-card", ".product-item", ".product", ".product-grid-item", "li.product"
+]
+TITLE_SELECTORS = [
+    ".product-title", ".title", "h2", "a.product-name", ".name"
+]
+PRICE_SELECTORS = [
+    ".price", ".product-price", ".price-amount", "span.price"
+]
+LINK_SELECTORS = [
+    "a", "a.product-link"
+]
+IMAGE_SELECTORS = [
+    "img", ".product-image img", "img.product-img"
+]
 
-    products = []
 
-    # Tomamos los botones "COMPRAR" y desde ahí subimos al contenedor del producto
-    buy_buttons = driver.find_elements(
-        By.XPATH,
-        "//a[normalize-space()='COMPRAR']"
-    )
-    print("Botones COMPRAR encontrados:", len(buy_buttons))
+def parse_price(text):
+    """Extrae un número float desde texto que contiene símbolos de moneda."""
+    if not text:
+        return None
+    # quitar letras, símbolos y dejar números y punto/coma
+    cleaned = re.sub(r"[^\d,.\-]", "", text)
+    # normalizar coma decimal a punto si corresponde (ej: "1.234,56")
+    if cleaned.count(",") == 1 and cleaned.count(".") > 0:
+        # probable formato 1.234,56 -> quitar puntos y cambiar coma por punto
+        cleaned = cleaned.replace(".", "").replace(",", ".")
+    elif cleaned.count(",") > 1 and cleaned.count(".") == 0:
+        cleaned = cleaned.replace(",", "")
+    cleaned = cleaned.replace(",", ".")
+    try:
+        return float(cleaned)
+    except:
+        return None
 
-    for btn in buy_buttons:
+
+def get_driver():
+    opts = Options()
+    opts.add_argument("--headless=new")  # usar nueva opción headless si disponible
+    opts.add_argument("--no-sandbox")
+    opts.add_argument("--disable-dev-shm-usage")
+    opts.add_argument("--disable-gpu")
+    # opcional: user-agent
+    opts.add_argument("user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115 Safari/537.36")
+    driver = webdriver.Chrome(ChromeDriverManager().install(), options=opts)
+    driver.set_page_load_timeout(30)
+    return driver
+
+
+def first_element_text(card, selectors):
+    """Intenta varios selectores dentro de un elemento y devuelve texto limpio."""
+    for sel in selectors:
         try:
-            # Subir al contenedor principal del producto
-            try:
-                container = btn.find_element(By.XPATH, "./ancestor::li[1]")
-            except Exception:
-                container = btn.find_element(By.XPATH, "./ancestor::div[1]")
-
-            # Buscar el enlace del producto para obtener el título
-            try:
-                link_el = container.find_element(
-                    By.XPATH,
-                    ".//a[normalize-space()!='' and normalize-space()!='COMPRAR'][1]"
-                )
-            except Exception:
-                link_el = None
-
-            title = ""
-
-            if link_el is not None:
-                # probar primero atributo title, luego el texto
-                title = (link_el.get_attribute("title") or link_el.text or "").strip()
-
-            # si aún está vacío, usamos texto del contenedor como respaldo
-            if not title:
-                full_text = container.text.strip()
-                title = full_text.split("\n")[0] if full_text else "Producto Monge"
-
-            # cortar desde el primer símbolo de colones (para evitar meter el precio en el título)
-            title_clean = re.split(r"₡|¢", title)[0]
-            title_clean = title_clean.replace("COMPRAR", "").strip()
-
-            # Precio
-            price = None
-            try:
-                price_el = container.find_element(
-                    By.XPATH,
-                    ".//*[contains(text(),'₡') or contains(text(),'¢')]"
-                )
-                price_text = price_el.text.strip()
-
-                # Para colones usamos solo dígitos
-                digits = "".join(ch for ch in price_text if ch.isdigit())
-                if digits:
-                    price = int(digits)
-            except Exception:
-                pass
-
-            # URL del producto
-            url = URL
-            if link_el is not None:
-                href = link_el.get_attribute("href")
-                if href:
-                    url = href
-
-            products.append({
-                "title": title_clean,
-                "price": price,
-                "url": url,
-            })
-
-        except Exception:
-            # Si algo truena con un producto, seguimos con el siguiente
+            el = card.find_element(By.CSS_SELECTOR, sel)
+            txt = el.text.strip()
+            if txt:
+                return txt
+        except NoSuchElementException:
             continue
+    return None
 
-    driver.quit()
-    print("Productos encontrados en Monge:", len(products))
+
+def first_element_attr(card, selectors, attr="href"):
+    """Intenta varios selectores y devuelve un atributo (href/src)."""
+    for sel in selectors:
+        try:
+            el = card.find_element(By.CSS_SELECTOR, sel)
+            val = el.get_attribute(attr)
+            if val:
+                return val
+        except NoSuchElementException:
+            continue
+    return None
+
+
+def scrape_category(driver, category_path, max_pages=5, sleep_between_pages=1.0):
+    """
+    Recorre las páginas de una categoría y devuelve lista de productos.
+    max_pages: límite para no raspar todo el sitio en pruebas.
+    """
+    products = []
+    page = 1
+    category_url = urljoin(BASE, category_path)
+    logger.info(f"Scrapeando categoría: {category_url}")
+
+    while page <= max_pages:
+        url = f"{category_url}?page={page}"
+        try:
+            driver.get(url)
+        except TimeoutException:
+            logger.warning(f"Timeout cargando {url}, intentando de nuevo...")
+            driver.get(url)
+        sleep(0.5)
+
+        # intentar localizar cards
+        cards = []
+        for sel in CARD_SELECTORS:
+            cards = driver.find_elements(By.CSS_SELECTOR, sel)
+            if cards:
+                break
+
+        # si no hay cards, intentamos detectar productos en otro contenedor
+        if not cards:
+            # prueba heurística: encontrar enlaces a productos en la página
+            anchors = driver.find_elements(By.CSS_SELECTOR, "a")
+            product_links = []
+            for a in anchors:
+                href = a.get_attribute("href") or ""
+                if "/producto/" in href or "/productos/" in href:
+                    product_links.append(href)
+            product_links = list(dict.fromkeys(product_links))  # unique
+            for pl in product_links:
+                # crear entrada provisional
+                products.append({"title": None, "price": None, "url": pl, "image_url": None})
+            # si encontramos enlaces por heurística, no intentamos paginar por ahora
+            if product_links:
+                break
+
+        for card in cards:
+            # título
+            title = first_element_text(card, TITLE_SELECTORS)
+            # precio
+            price_text = first_element_text(card, PRICE_SELECTORS)
+            price = parse_price(price_text)
+            # link relativo/absoluto
+            href = None
+            try:
+                # intentar anchor directo
+                a = card.find_element(By.CSS_SELECTOR, "a")
+                href = a.get_attribute("href")
+            except NoSuchElementException:
+                href = first_element_attr(card, LINK_SELECTORS, "href")
+
+            url_full = urljoin(BASE, href) if href else None
+
+            # imagen
+            img = first_element_attr(card, IMAGE_SELECTORS, "src")
+            img_full = urljoin(BASE, img) if img else None
+
+            product = {
+                "title": title or "Sin título",
+                "price": price,
+                "url": url_full,
+                "image_url": img_full
+            }
+            products.append(product)
+
+        # heurística para saber si hay más páginas: buscar botón "siguiente" o enlace a page+1
+        next_found = False
+        try:
+            # muchos sitios usan rel="next"
+            nxt = driver.find_element(By.CSS_SELECTOR, "a[rel='next']")
+            if nxt and nxt.is_displayed():
+                next_found = True
+        except NoSuchElementException:
+            # buscar enlace con texto siguiente
+            try:
+                nxt2 = driver.find_element(By.XPATH, "//a[contains(translate(text(),'S','s'),'siguiente') or contains(text(),'»') or contains(text(),'Next')]")
+                if nxt2:
+                    next_found = True
+            except NoSuchElementException:
+                next_found = False
+
+        if not next_found:
+            break
+
+        page += 1
+        sleep(sleep_between_pages)
+
+    logger.info(f"Encontrados {len(products)} productos en {category_path} (paginas escaneadas: {page})")
     return products
 
-# Función principal para ejecutar el scraper dinámico
+
+def scrape_all(max_pages_per_category=3):
+    driver = get_driver()
+    all_products = []
+    try:
+        for cat in CATEGORIES:
+            try:
+                prods = scrape_category(driver, cat, max_pages=max_pages_per_category)
+                all_products.extend(prods)
+            except Exception as e:
+                logger.error(f"Error scrappeando {cat}: {e}")
+    finally:
+        driver.quit()
+    # deduplicar por URL (si hay)
+    seen = set()
+    unique = []
+    for p in all_products:
+        key = (p.get("url") or p.get("title"))
+        if key and key not in seen:
+            seen.add(key)
+            unique.append(p)
+    return unique
+
+
 def main():
-    print("[MONGE] Iniciando scraping dinámico...")
-    products = scrape_monge()
-    print("[MONGE] Productos obtenidos:", len(products))
-    save_products(products)
-    print(f"[MONGE] Guardados {len(products)} productos en la BD")
+    logger.info("Iniciando scraper dinámico (Monge) — recolectando productos...")
+    products = scrape_all(max_pages_per_category=2)  # ajustar número de páginas
+    if not products:
+        logger.info("No se obtuvieron productos.")
+        return {"inserted": 0, "updated": 0}
+
+    # Guardar en BD a través de save_products (asegúrate que save_products trabaje con title, price, url)
+    try:
+        save_products(products)
+        log_change(f"Scraper dinámico: guardados {len(products)} productos")
+        return {"inserted": len(products), "updated": 0}
+    except Exception as e:
+        logger.error("Error guardando productos en BD: %s", e)
+        log_change(f"ERROR guardando productos dinámicos: {e}")
+        return {"inserted": 0, "updated": 0}
 
 
 if __name__ == "__main__":
