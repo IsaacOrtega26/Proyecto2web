@@ -189,3 +189,6 @@ Ver contenedores:
 
 ## Ejecutar scrapers dentro del contenedor:
 - docker exec -it proyecto2web-scheduler-1 bash
+
+## Ejecutar logs del proyecto
+- docker exec -it proyecto2web-app-1 python -m scrapper.downloader

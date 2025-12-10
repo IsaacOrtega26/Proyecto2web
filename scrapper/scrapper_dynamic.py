@@ -1,10 +1,3 @@
-# scrapper/scrapper_dynamic.py
-"""
-Scraper dinámico para TiendaMonge (Costa Rica).
-Detecta varios tipos de productos tecnológicos y guarda título, precio, url e imagen.
-Adaptable: si algún selector no funciona, reemplaza las listas de selectores.
-"""
-
 from time import sleep
 from urllib.parse import urljoin
 import re
@@ -17,23 +10,20 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 # imports al proyecto
 from scrapper.db_utils import save_products, find_product_by_title, log_change
-# opcional: si quieres descargar imágenes usa downloader
-# from scrapper.downloader import download_file
-# from scrapper.file_hash_utils import get_file_hash
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("scrapper_dynamic")
 
 BASE = "https://www.tiendamonge.com"
 
-# Lista de categorías/paths que queremos scrapear (ajusta si lo deseas)
+# Lista de categorías/paths que queremos scrapear 
 CATEGORIES = [
     "/computadoras",
     "/celulares",
     "/televisores",
     "/audio",
     "/consolas-y-videojuegos",
-    "/electrodomesticos"  # agrega más si quieres
+    "/electrodomesticos"  
 ]
 
 # Selectores probables (se prueban en orden hasta que alguno funcione)

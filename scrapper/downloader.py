@@ -1,10 +1,12 @@
+# scrapper/downloader.py
+
 import os
 import hashlib
 import requests
-from datetime import datetime
-from scrapper.db_utils import log_change, get_connection
+from scrapper.db_utils import log_change, get_connection, FILES_DIR
 
-FILES_PATH = "data/files/"
+# Usamos la misma carpeta de db_utils (FILES_DIR)
+FILES_PATH = FILES_DIR  # normalmente /data/files dentro del contenedor
 
 
 def ensure_folder():
@@ -23,31 +25,39 @@ def hash_file(path):
 
 
 def download_file(url, filename):
-    """Descarga un archivo desde URL al filesystem."""
-    response = requests.get(url, timeout=10)
-
-    if response.status_code != 200:
-        print("❌ Error descargando archivo:", url)
+    """Descarga un archivo desde URL al filesystem y devuelve la ruta local."""
+    try:
+        resp = requests.get(url, timeout=10)
+    except Exception as e:
+        print("Error de red descargando archivo:", url, e)
+        log_change(f"ERROR descargando archivo {url}: {e}")
         return None
 
-    file_path = os.path.join(FILES_PATH, filename)
+    if resp.status_code != 200:
+        print("Error descargando archivo:", url, "status:", resp.status_code)
+        log_change(f"ERROR descargando archivo {url}: status {resp.status_code}")
+        return None
+
+    file_path = os.path.join(FILES_PATH, filename)  
 
     with open(file_path, "wb") as f:
-        f.write(response.content)
+        f.write(resp.content)
 
     return file_path
+
 
 
 def process_files():
     """
     Lee productos desde BD y descarga los archivos.
-    Revisa cambios en hash y elimina antiguos.
+    Revisa cambios en hash y actualiza file_control.
     """
     ensure_folder()
 
     conn = get_connection()
     cur = conn.cursor()
 
+    # Aquí asumes que en products.url está el link al archivo (pdf/imagen/etc).
     cur.execute("""
         SELECT id, url
         FROM products
@@ -56,50 +66,59 @@ def process_files():
     products = cur.fetchall()
 
     for product_id, url in products:
-        filename = f"{product_id}.bin"  # puede ser la imagen, pdf, etc
+        if not url:
+            continue
+
+        filename = f"{product_id}.bin"  # puede ser imagen, pdf, etc
         file_path = os.path.join(FILES_PATH, filename)
 
-        # descargar archivo temporal para validar hash
+        # Descargar archivo temporal para calcular hash nuevo
         tmp_path = download_file(url, filename + ".tmp")
         if not tmp_path:
             continue
 
         new_hash = hash_file(tmp_path)
 
-        # consultar hash anterior
-        cur.execute("SELECT filehash FROM file_control WHERE product_id=%s", (product_id,))
-        prev_hash = cur.fetchone()
+        # Consultar hash anterior en file_control
+        cur.execute("SELECT hash FROM file_control WHERE product_id=%s", (product_id,))
+        prev = cur.fetchone()
 
-        # si no existía antes → es nuevo archivo
-        if not prev_hash:
+        # no existía registro ingresa NUEVO ARCHIVO
+        if not prev:
             os.rename(tmp_path, file_path)
             cur.execute(
-                "INSERT INTO file_control(product_id, filename, filehash) VALUES (%s, %s, %s)",
-                (product_id, filename, new_hash))
+                "INSERT INTO file_control(product_id, filename, hash) VALUES (%s, %s, %s)",
+                (product_id, filename, new_hash),
+            )
             conn.commit()
 
-            log_change(f"NUEVO ARCHIVO — Producto {product_id}")
+            log_change(f"NUEVO ARCHIVO — Producto {product_id} → {filename}")
             print("Nuevo archivo guardado →", filename)
             continue
 
-        prev_hash = prev_hash[0]
+        prev_hash = prev[0]
 
-        # si cambió el contenido
+        # contenido cambió a "ARCHIVO MODIFICADO"
         if prev_hash != new_hash:
-            os.remove(file_path)
+            # borrar archivo viejo si existe
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
             os.rename(tmp_path, file_path)
 
             cur.execute(
-                "UPDATE file_control SET filehash=%s WHERE product_id=%s",
-                (new_hash, product_id))
+                "UPDATE file_control SET hash=%s, updated_at=NOW() WHERE product_id=%s",
+                (new_hash, product_id),
+            )
             conn.commit()
 
-            log_change(f"ARCHIVO MODIFICADO — Producto {product_id}")
+            log_change(f"ARCHIVO MODIFICADO — Producto {product_id} → {filename}")
             print("Archivo actualizado →", filename)
 
         else:
-            # si es igual, borrar temporal
+            # mismo hash → no hay cambios, borrar temporal
             os.remove(tmp_path)
+            print(f"Archivo sin cambios para producto {product_id}")
 
     cur.close()
     conn.close()
