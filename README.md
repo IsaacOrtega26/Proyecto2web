@@ -192,3 +192,8 @@ Ver contenedores:
 
 ## Ejecutar logs del proyecto
 - docker exec -it proyecto2web-app-1 python -m scrapper.downloader
+
+## Ejecutar en la base de datos despues de arrancar los logs
+- SELECT COUNT(*) FROM products;
+- SELECT id, title, price, url FROM products ORDER BY id DESC LIMIT 5;
+- SELECT * FROM file_control;

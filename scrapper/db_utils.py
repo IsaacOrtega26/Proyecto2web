@@ -215,3 +215,15 @@ def delete_product_files(product_id):
     finally:
         cur.close()
         conn.close()
+
+def delete_missing_products(scraped_urls):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, url FROM products;")
+    rows = cur.fetchall()
+
+    for product_id, url in rows:
+        if url not in scraped_urls:
+            delete_product(product_id)  # ya borra product + file_control + archivo + logs
+    cur.close()
+    conn.close()

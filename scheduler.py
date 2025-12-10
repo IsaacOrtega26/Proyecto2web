@@ -1,10 +1,11 @@
-# scheduler.py
-
 from apscheduler.schedulers.blocking import BlockingScheduler
 from scrapper.scraper_static import main as run_static_scraper
 from scrapper.scrapper_dynamic import main as run_dynamic_scraper
 from datetime import datetime
 import os
+from scrapper.scrapper_dynamic import main as run_dynamic_scraper
+from scrapper.downloader import process_files  
+
 
 LOG_DIR = "logs"
 LOG_FILE = os.path.join(LOG_DIR, "changes.log")
@@ -44,9 +45,10 @@ def main():
     run_and_log_static()
     run_and_log_dynamic()
 
-    # Agrega trabajos periódicos (ajusta intervalo si hace falta)
-    scheduler.add_job(run_and_log_static, "interval", minutes=30, id="static_scraper")
-    scheduler.add_job(run_and_log_dynamic, "interval", minutes=30, id="dynamic_scraper")
+    # Agrega trabajos periódicos 
+    scheduler.add_job(run_dynamic_scraper, "interval", minutes=30, id="static_scraper")
+    scheduler.add_job(process_files, "interval", minutes=30, id="dynamic_scraper")
+
 
     log_change("Scheduler iniciado. Jobs: static_scraper (30m), dynamic_scraper (30m).")
 
