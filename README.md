@@ -164,6 +164,9 @@ HTML dinámico con JavaScript:
 Construir y ejecutar todo el proyecto:
 docker compose up -d --build
 
+# Correr el programa
+- docker compose up -d
+
 ## Servicios:
 
 - API + Dashboard  http://localhost:5000
@@ -189,3 +192,11 @@ Ver contenedores:
 
 ## Ejecutar scrapers dentro del contenedor:
 - docker exec -it proyecto2web-scheduler-1 bash
+
+## Ejecutar logs del proyecto
+- docker exec -it proyecto2web-app-1 python -m scrapper.downloader
+
+## Ejecutar en la base de datos despues de arrancar los logs
+- SELECT COUNT(*) FROM products;
+- SELECT id, title, price, url FROM products ORDER BY id DESC LIMIT 5;
+- SELECT * FROM file_control;

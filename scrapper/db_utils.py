@@ -8,7 +8,7 @@ LOG_FILE = os.path.join(LOG_DIR, "changes.log")
 FILES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "data", "files")
 FILES_DIR = os.path.normpath(FILES_DIR)
 
-# --- Utilidades de entorno / paths ---
+# Utilidades de entorno 
 def ensure_dirs():
     os.makedirs(LOG_DIR, exist_ok=True)
     os.makedirs(FILES_DIR, exist_ok=True)
@@ -21,7 +21,7 @@ def log_change(message: str):
         f.write(f"{ts} - {message}\n")
     print(f"{ts} - {message}")
 
-# --- Conexión a la BD ---
+# Conexión a la BD 
 def get_connection():
     return psycopg2.connect(
         host=os.getenv("DB_HOST", "localhost"),
@@ -31,12 +31,9 @@ def get_connection():
         database=os.getenv("DB_NAME", "scrapingdb"),
     )
 
-# --- Operaciones sobre products ---
+# Operaciones sobre products 
 def save_products(products):
-    """
-    Guarda una lista de productos. Cada producto es un dict con keys:
-    title, price, url
-    """
+    
     if not products:
         print("No hay productos para guardar.")
         return
@@ -102,7 +99,7 @@ def update_product(product_id, new_price):
     conn = get_connection()
     cur = conn.cursor()
     try:
-        # optional: obtener precio viejo para log
+        # obtener precio viejo para log
         cur.execute("SELECT price, title FROM products WHERE id=%s;", (product_id,))
         old = cur.fetchone()
         old_price = old[0] if old else None
@@ -147,7 +144,7 @@ def delete_product(product_id):
         cur.close()
         conn.close()
 
-# --- Operaciones para control de archivos ---
+# Operaciones para control de archivos 
 def get_file_record(product_id):
     conn = get_connection()
     cur = conn.cursor()
@@ -218,3 +215,15 @@ def delete_product_files(product_id):
     finally:
         cur.close()
         conn.close()
+
+def delete_missing_products(scraped_urls):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, url FROM products;")
+    rows = cur.fetchall()
+
+    for product_id, url in rows:
+        if url not in scraped_urls:
+            delete_product(product_id)  # ya borra product + file_control + archivo + logs
+    cur.close()
+    conn.close()

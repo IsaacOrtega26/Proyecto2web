@@ -1,10 +1,3 @@
-# scrapper/scrapper_dynamic.py
-"""
-Scraper dinámico para TiendaMonge (Costa Rica).
-Detecta varios tipos de productos tecnológicos y guarda título, precio, url e imagen.
-Adaptable: si algún selector no funciona, reemplaza las listas de selectores.
-"""
-
 from time import sleep
 from urllib.parse import urljoin
 import re
@@ -17,23 +10,20 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 # imports al proyecto
 from scrapper.db_utils import save_products, find_product_by_title, log_change
-# opcional: si quieres descargar imágenes usa downloader
-# from scrapper.downloader import download_file
-# from scrapper.file_hash_utils import get_file_hash
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("scrapper_dynamic")
 
 BASE = "https://www.tiendamonge.com"
 
-# Lista de categorías/paths que queremos scrapear (ajusta si lo deseas)
+# Lista de categorías/paths que queremos scrapear 
 CATEGORIES = [
     "/computadoras",
     "/celulares",
     "/televisores",
     "/audio",
     "/consolas-y-videojuegos",
-    "/electrodomesticos"  # agrega más si quieres
+    "/electrodomesticos"  
 ]
 
 # Selectores probables (se prueban en orden hasta que alguno funcione)
@@ -140,18 +130,16 @@ def scrape_category(driver, category_path, max_pages=5, sleep_between_pages=1.0)
 
         # si no hay cards, intentamos detectar productos en otro contenedor
         if not cards:
-            # prueba heurística: encontrar enlaces a productos en la página
             anchors = driver.find_elements(By.CSS_SELECTOR, "a")
             product_links = []
             for a in anchors:
                 href = a.get_attribute("href") or ""
                 if "/producto/" in href or "/productos/" in href:
                     product_links.append(href)
-            product_links = list(dict.fromkeys(product_links))  # unique
+            product_links = list(dict.fromkeys(product_links))
             for pl in product_links:
                 # crear entrada provisional
                 products.append({"title": None, "price": None, "url": pl, "image_url": None})
-            # si encontramos enlaces por heurística, no intentamos paginar por ahora
             if product_links:
                 break
 
@@ -184,7 +172,7 @@ def scrape_category(driver, category_path, max_pages=5, sleep_between_pages=1.0)
             }
             products.append(product)
 
-        # heurística para saber si hay más páginas: buscar botón "siguiente" o enlace a page+1
+        
         next_found = False
         try:
             # muchos sitios usan rel="next"
@@ -232,15 +220,19 @@ def scrape_all(max_pages_per_category=3):
             unique.append(p)
     return unique
 
-
+from scrapper.db_utils import save_products, find_product_by_title, log_change, delete_missing_products
 def main():
     logger.info("Iniciando scraper dinámico (Monge) — recolectando productos...")
-    products = scrape_all(max_pages_per_category=2)  # ajustar número de páginas
+    products = scrape_all(max_pages_per_category=2)  
+
+    scraped_urls = [p["url"] for p in products if p.get("url")]
+    delete_missing_products(scraped_urls)
+
     if not products:
         logger.info("No se obtuvieron productos.")
         return {"inserted": 0, "updated": 0}
 
-    # Guardar en BD a través de save_products (asegúrate que save_products trabaje con title, price, url)
+    # Guardar en BD a través de save_products 
     try:
         save_products(products)
         log_change(f"Scraper dinámico: guardados {len(products)} productos")
