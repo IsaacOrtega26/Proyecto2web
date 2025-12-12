@@ -164,6 +164,9 @@ HTML dinámico con JavaScript:
 Construir y ejecutar todo el proyecto:
 docker compose up -d --build
 
+# Correr el programa
+- docker compose up -d
+
 ## Servicios:
 
 - API + Dashboard  http://localhost:5000
